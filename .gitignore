@@ -1,7 +1,6 @@
 # Temp / scratch directories and files
 .tmp_*
 .playwright*
-.mcp_tools/
 
 # Screenshot and empty scratch
 editor-state.png
@@ -17,6 +16,8 @@ kernel.v4stride*.asc
 # Submission / result logs
 sub_*
 *.json
+!history_results.json
+!key_kernels.json
 
 # Build output
 build/

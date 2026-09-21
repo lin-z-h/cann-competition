@@ -455,3 +455,14 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 - 本地参考测试 10 shapes × 4 layouts 通过；远端上传源码 diff 为 0。提交 `394474`，object ID `6ab12f120304f72a56d4b612`。
 - 结果是 15/15 全部 Wrong Answer，所有 precision=0、time=0；页面/API 均未给出编译/设备日志。此模式无法用于性能比较。源码与通过版本的实际差异只有上述 Host 条件与注释；设备代码相同。因此可能是新 group 分配引起某个隐藏 shape 的运行期资源/同步失败，也可能是构建/评测环境故障，不能仅凭全 0 确定根因；尤其不能把它解释成普通数值误差或 N-group 性能退化。没有外部故障证据，不重复同一 hash。
 - 已完整回退到 `384543`，SHA-256 与远端通过版相同，本地参考检查再次通过。此实验无法验证“双 tile 更快”假设，计划 02 暂不保留。今日提交计数为 7/50。
+
+### 8.19 plan 11：对齐 N 尾块在 Matmul C 原缓冲内填无效 lane（失败，已回退）
+
+- 唯一变化：`ProcessMTile` 中仅当 `currentM==baseM、currentN<baseN、currentN%8==0` 时，在 `mmReady` 的各行无效 lane 写 `-FLT_MAX`，避免完整 C tile `Duplicate+Adds` 复制；其它尾块保留原路径。官方 Duplicate API 允许 VECIN 作为目标且要求 32 字节起址，该窄条件在 `baseN/currentN` 均为 8 倍数时满足。静态参考测试和 NumPy 物理 stride/全负行模型均通过，但没有本地 NPU 编译验证。
+- 提交 `394588`，object ID `6ab130bc0304f72a56d5b8bf`，候选 SHA-256 `74b166be8d83c58781f167666932ea54557a1bbe9055a655711210255c7561c1`。上传源码远端 diff 为 0。结果仍为 15/15 全 0 Wrong Answer，无编译或设备日志可见；不能据此判断性能，也不能把原因确定为数值错误。
+- 该单与 8.18 相邻的两次全 0 可能来自各自代码问题或评测环境，暂无外部服务故障证据。按止损规则不重投同一 hash，已完整回退 `kernel.asc` 和本地测试到 384543；重新运行 10 shapes × 4 layouts 通过。2026-09-21 当日提交累计 8/50，2026-09-22 尚未新提交。
+
+### 8.20 Git 协作交付
+
+- 仓库已存在，`origin` 为 `https://github.com/lin-z-h/cann-competition.git`。同步远端时发现队友新增 `cann_api_reference.md` 和 `new_design.md`，与本地源码无冲突；不覆盖远端文档。
+- 共享可靠源码、测试、规则、计划、实验记录、历史结果及无凭据的 `.mcp_tools/` 工具。`.tmp_cannjudge_state.json` 含 GitCode/CANNJudge 登录令牌，必须继续忽略；`.playwright*`、`.tmp_*`、官方样例下载和无效旧候选不入库。

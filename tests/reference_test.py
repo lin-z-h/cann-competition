@@ -137,8 +137,6 @@ def check_source_contract():
         "const uint32_t mTiles = (m + baseM - 1) / baseM;"
     )
     assert "const uint32_t blockCount = std::min(coreCount, totalJobs);" in source
-    assert "currentN % kFp32BlockElements == 0" in source
-    assert "mmReady[row * params_.baseN + currentN]" in source
     assert "return 128;" in source
     assert "const size_t partialBytes = partialValueBytes + syncBytes;" in source
 
@@ -215,14 +213,6 @@ def run_case(batch, m, n, k, dtype, seed, all_negative=False):
 
 def main():
     check_source_contract()
-    # Full M tiles and 8-lane-aligned N tails are the only in-place C route.
-    # Model its baseN-strided physical storage, including all-negative rows.
-    for base_m, base_n, valid_n in ((16, 64, 40), (32, 128, 72), (64, 128, 120)):
-        valid = -np.arange(1, base_m * valid_n + 1, dtype=np.float32).reshape(base_m, valid_n)
-        physical_c = np.empty((base_m, base_n), dtype=np.float32)
-        physical_c[:, :valid_n] = valid
-        physical_c[:, valid_n:] = -np.finfo(np.float32).max
-        np.testing.assert_array_equal(physical_c.max(axis=1), valid.max(axis=1))
     cases = [
         (1, 1, 1, 32, np.float16, 1, False),
         (2, 7, 13, 40, np.float16, 2, False),
