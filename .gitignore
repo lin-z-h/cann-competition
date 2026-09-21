@@ -1,0 +1,22 @@
+# Temp / scratch directories and files
+.tmp_*
+.playwright*
+.mcp_tools/
+
+# Screenshot and empty scratch
+editor-state.png
+fetch_sub.js
+
+# Kernel iteration backups
+kernel.asc.broken_backup
+kernel.baseline.asc
+kernel.v2.asc
+kernel.v3.asc
+kernel.v4stride*.asc
+
+# Submission / result logs
+sub_*
+*.json
+
+# Build output
+build/

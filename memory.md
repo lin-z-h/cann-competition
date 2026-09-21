@@ -1,6 +1,6 @@
 # BatchMatmulMaxSum 优化记忆与实验方法
 
-更新时间：2026-09-20
+更新时间：2026-09-21
 
 目标：15 个测试点全部正确，单次迭代严格只启动 1 个 kernel，最终平均分至少 30。
 
@@ -8,8 +8,8 @@
 
 ### 已验证提交
 
-- `372764`：15/15 Pass，估算平均分 `19.8436`。
-- `372921`：15/15 Pass，只在主 `ProcessMTile` 路径启用异步 Matmul，估算平均分 `20.3304`。
+- `372764`：15/15 Pass；旧记录的 `19.8436` 使用了错误的线性估分，不能当官方分数。
+- `372921`：15/15 Pass，只在主 `ProcessMTile` 路径启用异步 Matmul；按题面公式和现存 15 个耗时重算平均约 `20.288`，旧记录 `20.3304` 不再使用。
 - `372963`：在 `372921` 上增加“大尺寸、BF16、跨布局”调度切换；全 0、无设备用时，已回退，不能当作基线。
 - `373483`：与 `372921` 同一算法、仍带关闭状态的探针框架，15/15 Pass；耗时与 `372921` 基本一致，可作为远端可恢复基线。
 - `378513`：删除探针框架后再次加入“大尺寸、BF16、跨布局时令 `nGroups=1`”；15/15 Pass，但 case 11 从 `224.58 us` 退化到 `330.97 us`，证明该调度切换无效，已回退。
@@ -300,7 +300,7 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 结论：
 
 - 唯一明确命中的 case 0 仅从 `11.93` 变为 `11.68 us`，提升约 `2.1%`，低于计划规定的 10% 目标门槛，属于评测波动范围。
-- 按该次 `best_time` 粗估，平均分相对 `379068` 约 `-0.16`；case 6 的 `17.17 -> 19.43 us` 并非 GEMV 路由命中，更像单次噪声，但即使忽略它也没有足够 GEMV 收益。
+- 按官方对数公式与该次 `best_time` 重算，平均分相对 `379068` 约 `-0.093`；case 6 的 `17.17 -> 19.43 us` 并非 GEMV 路由命中，更像单次噪声，但即使忽略它也没有足够 GEMV 收益。
 - 这是完整 Pass 且目标 case 有非零正常耗时，不属于失败抖动，不复验、不继续扫描 GEMV split/config。
 - 已完整回退；当前 `kernel.asc` 再次精确恢复为 `379068` 的 SHA-256 `0d26f7b3...f1922`，参考测试通过。
 
@@ -327,8 +327,8 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 
 结论：
 
-- 明确命中的 case 2 从 `29.39` 降到 `27.75 us`，提升 `5.58%`；按公开 `best_time=2.16 us` 估算，该 case 得分约从 `7.35` 增至 `7.78`，单 case 增加约 `0.434`。
-- 本次 15 case 粗估平均分约从 `20.07` 增至 `20.38`，即 `+0.312`。其中 case 12/13 等未命中路由的明显变快只能视为有利抖动，不能归功于行级 GEMV；保留依据主要是目标 case 的方向一致收益，以及新路径没有改变其他 shape 的运行路径。
+- 明确命中的 case 2 从 `29.39` 降到 `27.75 us`，提升 `5.58%`；按官方题面的对数公式和 `best_time=2.16 us`，该 case 约从 `13.444` 增至 `13.705`，单 case 增加 `0.261`，折合 15 case 平均仅约 `+0.017`。
+- 本次 15 case 重算平均分约从 `20.124` 增至 `20.295`，即 `+0.171`；其中 case 12/13 等未命中路由的明显变快只能视为有利抖动，不能归功于行级 GEMV。保留依据是目标 case 的可解释正收益、下一次提交自然复验，以及新路径没有改变其他 shape 的运行语义；不能再把单次总分增量归因于该机制。
 - 原计划“基座实验必须快 10%”过于机械。以后以实际积分贡献和风险共同判断：窄路由若 15/15、目标 case 有可解释的正收益、非目标路径代码语义不变且没有稳定回退，可以保留 5% 级收益；10% 继续作为强证据标准，而不是一票否决线。
 - 当前保留该候选，不为确认 5.58% 立即重复提交。同一代码的稳定性由下一项建立在该候选上的实验自然复验；若后续样本中 case 2 回到基线波动范围，再回退该分支。
 - `Running` 持续约 7 分钟后正常完成，说明这次长等待是队列/评测时延，不是失败；期间没有重复提交，节省了一次机会。
@@ -354,8 +354,9 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 
 结论：
 
-- 相对直接父版本 `384408`，case 11（0-based）从 `225.93` 降至 `185.12 us`，提升 `18.06%`；case 13 从 `32.91` 降至 `29.16 us`，提升 `11.40%`。两个目标同时超过两位数，符合计划 05 的保留条件。
-- 按公开 best time 粗估，15 case 平均分约 `20.382 -> 20.744`，增加 `+0.362`。单次测量中其它未明确命中路径的变化不归因于本机制；主要保留证据是上述两个大幅同向目标收益。
+- 相对直接父版本 `384408`，case 11（0-based）从 `225.93` 降至 `185.12 us`，提升 `18.06%`；后续提交 `384622` 的 case 11 为 `182.46 us`，即使 case 2 已切换到 AIV，case 11 仍稳定快于旧版，构成两次独立正向证据。
+- case 13 从 `32.91` 降至 `29.16 us`，但后续不改此路径的 `384622` 又为 `27.85 us`；不能仅根据时间推断 case 13 是否命中 N-group 异步。把这项 11.4% 的单次变化列为待归因信号，不能当第二个已确认的路径收益。
+- 按官方对数公式和公开 best time 重算，15 case 平均分约 `20.295 -> 20.471`，增加 `+0.176`；case 11 单 case 约 `17.548 -> 19.204`，折合平均贡献约 `+0.110`。其它未明确命中路径的变化不归因于本机制；主要保留证据是 case 11 的两次稳定约 18% 耗时收益。
 - case 2 为 `27.74 us`，与父版本 `27.75 us` 几乎完全一致，已经自然复验行级 GEMV 的 `29.39 -> 27.7x us` 收益，因此 01B 正式保留，无需专门复验。
 - case 12 从父版本异常偏快的 `29.69` 回到 `33.14 us`，接近长期 `31.9–33.9 us` 区间；这是父版本的有利抖动消失，不是本次 N-group 异步回退。
 - 当前可靠候选升级为 `384543`。下一步只考虑计划 06/07 的依赖检查；若无法证明 Vector 或 partial merge 是剩余关键路径，则取消对应槽位，不在已经获胜的异步循环上盲目叠加。
@@ -380,8 +381,8 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 
 结论：
 
-- 唯一明确命中的 case 2 从父版本 `27.74` 退化到 `32.81 us`，慢 `18.28%`；该 case 估分约从 `7.79` 降到 `6.58`。改动路径和回退方向完全对应，不能用其它未命中 case 的有利波动掩盖。
-- 虽然本次按全部单次耗时粗估的平均分反而约增加 `+0.24`，增量来自未命中路径的评测波动，不是 AIV 机制收益，因此不保留。
+- 唯一明确命中的 case 2 从父版本 `27.74` 退化到 `32.81 us`，慢 `18.28%`；按官方公式该 case 约从 `13.706` 降到 `12.970`，折合平均贡献约 `-0.049`。改动路径和回退方向完全对应，不能用其它未命中 case 的有利波动掩盖。
+- 虽然本次按全部单次耗时和官方公式重算的平均分反而约增加 `+0.135`，增量来自未命中路径的评测波动，不是 AIV 机制收益，因此不保留。
 - 根因判断：对这一 K/shape，逐 document 的 MTE2、两次 Cast、Mul、ReduceSum 和串行循环成本高于 Cube/GEMV 固定开销；单纯调 K chunk 或加双缓冲不能消除逐 document 指令与归约成本。
 - 按计划分支止损，依赖 AIV 原型获胜的尝试 13–16 全部取消；不扩 BF16、不做 layout 重排、不为该路径扫描 chunk 大小。
 - 已精确恢复 `384543`：`kernel.asc` SHA-256 为 `da2f4f2be9c95c06e98c406f19674f0276cf7f4ac69372d1192c8f44a1ed312b`，与远端源码逐行 diff 为 0，参考测试通过。
@@ -391,3 +392,66 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 - 384622 提交前，系统剪贴板粘贴三次未通过编辑器回读守门；三次均在点击“提交代码”前终止，没有创建 submission、没有消耗评测次数。
 - 原因是提交页文件选择存在两个 `kernel.asc` 控件，且 Windows 系统剪贴板在该会话中返回空内容。
 - `.mcp_tools/paste_and_submit.js` 现会明确选择第一个 `kernel.asc` 控件，使用页面内 `ClipboardEvent` 注入源码，并拦截“复制当前文件”回调逐字回读。只有规范化内容完全一致才点击提交。
+
+### 8.10 尝试 17/18 的零提交准入审计（暂缓）
+
+- 当前可靠候选 `384543` 已在普通 Matmul 模板中使用 `CFG_MDL`，Host 调用 `MatmulApiTiling::GetTiling` 后读取实际 `baseM/baseN`，但没有对目标 case 的 `baseK/stepKa/stepKb/depthA1/depthB1`、MTE2 等待或 L1/L0 占用的可观测记录。
+- 当前 Windows 环境没有可调用的 CANN 编译器、`npu-smi` 或 `msprof`。本地附带的华为 `matmul_preload` 样例支持 A2，但该样例要求 K 全载（`singleK <= baseK * stepK`）且 A1/B1 深度对应双缓冲；仅修改 preload flag 或照搬示例的某组深度无法保证当前动态 tiling 符合契约。
+- [华为 Matmul tiling 的 SetMatmulConfigParams 文档](https://www.hiascend.com/document/detail/en/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0704.html) 明确要求 Host tiling 配置与 device 的 MatmulConfig 匹配；不能只切设备模板。文档所列 L1 缓存 UB 特性也不支持 A2，不应把它当作本题优化点。
+- 结论：计划 17 未通过“实际 tiling + 资源 + 瓶颈证据”的准入，暂缓且不提交；依赖 17 胜出的 18 一并暂缓。尝试 19 同样缺少“低并行度且大 K”的具体 case 证据，暂缓 Split-K；不根据仅有耗时猜 K 值。
+
+### 8.11 尝试 03/04 的零提交准入审计（暂缓）
+
+- [华为 Matmul tiling 文档](https://www.hiascend.com/document/detail/en/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0704.html) 提供 `FIRSTM/FIRSTN` 的跨 tile 遍历顺序，说明多 M tile 的输出顺序在配置一致时理论上可以定义。
+- 但当前大 M 高并行度路径的工作单元已经是单个 M tile，超块会减少并行 job；现有结果证明 M 并行让历史 case 12 从约 227 us 下降到约 33 us。若不能先证明其它目标 case 仍有多个相邻 M tile 分配给同一 block，并同时记录 tile 次序、C stride 与失去的并行度，则 03 的“复用 B”可能得不偿失。
+- 结论：03 暂缓，不靠官方有遍历顺序这一事实就贸然拼接 M-supercall；04 依赖 03 的正确与收益，随之暂缓。没有提交，不影响 384543。
+
+### 8.12 尝试 10 的 UB/异步契约审计（零提交，暂缓）
+
+- 当前 `Init` 同时初始化单槽 C 输出队列（`4×baseM×baseN` 字节）及完整尾块 padded buffer（相同大小），还有 rowMax、tileMax、partial 输入/输出队列、归约与 `GetBlockNum()×32` 同步缓冲。以实际 tiling 返回 `baseM=baseN=128` 为例，每份 FP32 C tile 为 65,536 字节：把 C 队列改成双槽后，仅这两槽和原样保留的 padded buffer 就需要 196,608 字节，尚未计入其它缓冲。
+- [华为 A2/A3 UB bank 最佳实践](https://www.hiascend.com/document/detail/en/canncommercial/850/opdevg/Ascendcopdevg/atlas_ascendc_best_practices_10_0025.html) 给出 192 KiB UB。**这只是 A2/A3 参照，不代表已确认评测设备型号**。原样双槽不能作为通用方案；必须先获得实际设备 UB 容量。只有严格证明某窄路由不会访问 `tailPaddedBuffer_`，才有条件跳过此 buffer 的初始化并重新核算所有队列和 bank 冲突。
+- [华为 GetTensorC 文档](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0639.html) 说明异步 `Iterate` 必须配 `SetWorkspace`，且异步结果消费、输出连续写的布局有各自契约；已有主路径满足单槽异步配对，但双槽必须另外证明每个槽从 `GetTensorC` 到 `ReduceMax` 再到 `FreeTensor` 期间没有重用，也不能仅靠 `InitBuffer(...,2,...)` 假定实现了 Cube/Vector 重叠。
+- 当前没有目标 case 的实际 `baseM/baseN`、UB 容量或 Cube/Vector 等待比例，无法证明窄门控双槽能提升至少两个主路径 case。尝试 10 继续暂缓；不改 `kernel.asc`，不为不完整的双缓冲占用提交次数。由 10 派生的 11 是独立的尾块语义问题，仍需官方 mask/stride 契约和逐 lane 证明，不因为 10 暂缓就直接视作已证伪。
+
+### 8.13 实际可获取的评测信息与评分公式纠错
+
+- 旧独立浏览器脚本的保存登录态已失效，但 Playwright CLI 的已打开会话仍处于 `2040lin` 登录状态；已直接核对线上题面、本人 `384543` 详情及排行榜。详情只含 15 个 case 的耗时、精度与 `best_time`，不含 `M/N/K`、实际 tiling、芯片型号、UB 容量或 Cube/Vector/MTE profiler 时间；排行榜测试点元数据也仅有 ID、baseline、tbest、type。公开题面和本地模板未提供这些隐藏配置，不能把缺失数据编造成“已测量”。
+- 本地 `CMakeLists.txt` 指定 `--npu-arch=dav-2201`。[华为毕昇编译器文档](https://www.hiascend.com/document/detail/zh/canncommercial/900/compiler/BishengCompiler/atlas_bisheng_10_0017.html) 说明 Atlas A2 与 A3 均对应 `2201`；因此编译目标不能唯一确定评测机器，也不能据它宣称实际 UB 为 192 KiB。此前 8.12 的 192 KiB 仅为官方 A2/A3 最佳实践的参考上限，不是在线环境实测值。
+- 更重要的是，线上题面与 `problem_official.md` 一致，比赛得分规则为 `100 / (1 + log_1.5(t/T))`，而旧计划与若干旧实验用 `100×T/t` 线性估分。已据 `384543` 详情里的 `best_time` 重算：`379068=20.124`、`384408=20.295`、`384543=20.471`、`384622=20.606`。线上排行榜显示本人当前为第 67 名、`384622` 实际得分 `20.61`，验证了重算公式；但该版唯一明确命中的 case 2 确定退化，未命中 case 的有利波动不能归因于 AIV，故本地代码仍保持 `384543`。旧线性估分的单 case 收益和以它设计的固定 `+0.35/+0.25` 准入线均作废；以耗时改善、命中证据、官方公式以及自然复验共同判断。
+- 在无 NPU、无 msprof、线上详情不含 tiling 的情况下，真正的目标 case 资源瓶颈不能零提交实测。下一次需要评测时应设计一个合规、单提交、能区分多种瓶颈假设的受控实验；在此之前仍不提交“猜目标 case shape”的优化版。
+- 已打开本人 `384543` 提交工程的 `run.sh` 与 `scripts/BatchMatmulMaxSum.py`：前者只做 CANN 编译、样例运行与校验，没有设备/tiling/profiler 输出；后者的 `cases` 仅有公开基础样例 `(B=1,M=2,N=3,K=4)`，不是排行榜 15 个隐藏测试点。不能从这些公开样例反推隐藏 case。
+- 登录会话的本人提交列表显示上海时间 2026-09-21 目前有 4 次提交：`384363/384408/384543/384622`，均已完成且 Pass；本轮只读审计新增提交 `0` 次。按用户所述每日 50 次额度，当前至少应保留约 46 次，不为缺乏证据的实验占用它们。
+
+### 8.14 plan 尝试 10：窄路由 C 双缓冲（正确但无收益，已回退）
+
+- 实现：Host 用 `PlatformAscendC::GetCoreMemSize(UB)` 查询实际 UB 容量；只在非 Row-GEMV、`nGroups=1`、`nTiles>1`、M/N 均整 `baseM/baseN` 且 8 对齐、完整 UB 预算（含 16 KiB 保留量）允许时，跳过不可能访问的 padded buffer，令 C 输出队列深度和物理槽数均为 2。主路径先排入第 0 个 C tile，之后每次先排入下一 tile，再出队当前 tile 做 `Max(N)`；其它路径保持单槽。官方 TQue 文档要求连续两次 EnQue 的 queue depth 至少为 2，代码遵守此契约；仍只有一个 global kernel。
+- 提交 `390882`，object ID `6ab0f77bb0477ec41e30a047`，SHA-256 `573050bcb51c03d2811e98ab6160a02e2975a095801ade363d02f120cc0b5094`。上传前页面“复制当前文件”回读 51,795 字符，SHA-256 与本地一致；远端源码与本地候选逐行 diff 为 0。结果 15/15 Pass，耗时（0-based case 顺序）：`11.88, 22.24, 27.46, 16.32, 13.05, 100.32, 17.58, 102.94, 139.35, 151.46, 231.87, 181.35, 35.36, 29.36, 37.30 us`。
+- 按官方对数公式，候选平均约 `20.328`，父版 `384543` 约 `20.471`，本次低 `0.143`。case 11 从 `185.12` 到 `181.35 us`（约 2.0%）不足以和噪声区分；case 12 从 `33.14` 到 `35.36 us`（慢约 6.7%），case 3 从 `15.09` 到 `16.32 us`（慢约 8.2%）。未观察到两个明确命中 case 快 8% 的预定目标，不能保留。
+- 结论：窄路由双缓冲的正确性在在线 15 case 得到验证，但收益假设不成立或命中范围太窄；不能仅从耗时判定哪一个。按止损规则回退，不再无证据调 queue depth、UB margin 或对齐门槛。当前 `kernel.asc` 已精确恢复 `384543` 的 SHA-256 `da2f4f2be9c95c06e98c406f19674f0276cf7f4ac69372d1192c8f44a1ed312b`，本地参考检查通过。本日提交计数现为 5/50。
+
+### 8.15 plan 尝试 11：masked 尾块归约的官方 API 审计（零提交）
+
+- [CANN9.0 高阶 ReduceMax 文档](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_10055.html) 规定 A2/A3 对 `srcInnerPad` 仅支持 `true`；内轴不是 32 字节整数倍时，需要实际按 32 字节 padding 后才能用当前 `Pattern::Reduce::AR` 路径。单纯把 `shape[1]` 改成 `currentN` 而直接吃紧凑 Matmul C 输出，不能满足其物理布局契约。
+- [基础 ReduceMax 文档](https://www.hiascend.com/document/detail/en/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0076.html) 确有 bitwise/contiguous mask 版本，但它把多个 repeat 一起归约到一个结果，并不直接给每个 query 行一个最大值；若改用逐行调用，必须额外证明 32 字节行起址、`srcRepStride`、共享临时空间和每行输出的布局，且可能引入大量小粒度指令。
+- 因此 11 还不是“可直接替换 padded 复制”的已验证方案。没有逐 lane 全负/双尾证明和性能优势依据时暂缓，不为看似简单的 shape 参数修改消耗一次错误答案提交。尝试 10 的无收益也不自动证伪 11，二者瓶颈不同。
+
+### 8.16 小 M 行级 GEMV 扩围实验（已回退）
+
+- 动机：01B 的 `M<=8` FP16 双侧 K 连续行级 GEMV 已两次 15/15 Pass；旧正交探针把低分 case 5/6 的 M/N 桶定位在 `M=9–32、N=33–128`，且 case 5 的 layout 为 `transposeX1=false, transposeX2=true`。单变量候选只把门控扩大为 `M<=8 || (M<=32 && N>32)`，dtype/layout/K 对齐限制、Matmul 模板、归约和单 kernel launch 保持不变。此实验不能预先证明 case 5 的 dtype 与 K 对齐会命中，属于检测这一缺口的受控提交。
+- 本地 `python tests/reference_test.py` 通过 10 shapes × 4 layouts；静态检查因旧门控字面量先失败，随后按实际新路由更新，并让 NumPy 分块模型覆盖 `baseM=1`，重新通过。在线提交前编辑器回读与本地源码规范化换行后完全一致，远端源码 diff 为 0。
+- 提交 `394284`，object ID `6ab12c570304f72a56d2df68`，候选 SHA-256 `3c6baf3db1f65ee48d64f82a157136c8ee0e78db6ce1d6409f71cd5e51072fda`；15/15 Pass。0-based case 耗时：`11.63, 21.64, 27.64, 15.31, 12.60, 98.85, 16.98, 101.04, 137.61, 149.44, 230.14, 180.63, 32.59, 29.55, 37.28 us`。
+- 最关注的 case 5 从可靠父版 `98.48` 到 `98.85 us`，没有收益；case 6 从 `17.38` 到 `16.98 us`，幅度约 2.3%，不足以证明机制。按本次详情里的相同 best times 重算，平均分 `20.4595→20.5147`，即 `+0.0552`，来自多处未确认命中的小波动，不能作为保留依据。现有详情不公开 dtype/K/实际路由，因此不能判定新门控未命中还是命中后无收益；两种情况下都不值得继续扫 GEMV 阈值。
+- 已完整回退源码与参考测试，`kernel.asc` 再次为 `384543` 的 SHA-256 `da2f4f2be9c95c06e98c406f19674f0276cf7f4ac69372d1192c8f44a1ed312b`。今日提交计数为 6/50。
+
+### 8.17 plan 尝试 11 的进一步逐行 ReduceMax 成本审计（零提交）
+
+- 官方基础 ReduceMax 支持 `count` 与 `mask/repeatTime/srcRepStride` 两族 API，但单次调用只产生一个全局最大值；其 `src` 起址要求 32 字节对齐，FP32 `dst` 起址要求 8 字节对齐，sharedTmpBuffer 起址要求 32 字节对齐。当前 Matmul C 的 `baseN` 是 8 的倍数，因此逐行 `src[row*baseN]` 对齐可证明；把每行结果放在 `tileMax[row]` 则不能保证奇数 row 的 8 字节起址对齐。需要至少 8-float 行间距或另一个收集阶段。
+- 每行调用 ReduceMax 还要解决 8-stride 结果到连续 `rowMax` 的聚集、每行临时空间与事件同步。即使布局正确，M=32 时需要 32 次基础归约和聚集，现有 padded 路径使用按行 Adds 后一次高阶 AR；没有 N-tail 主导耗时的证据，无法预估计划要求的 12% 提升。只把 `count=currentN` 写到高阶 AR 则仍违反其物理 padding 契约。
+- 结论：11 的数值可行性尚需新的收集方案，性能假设也不足；目前不提交。参考：[官方基础 ReduceMax 文档](https://www.hiascend.com/document/detail/en/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0076.html)。
+
+### 8.18 用户授权放宽准入后：plan 02 N-group 双 tile 粒度（失败，已回退）
+
+- 父版 `384543`；唯一变化为 `nTiles>=4 && nGroups>nTiles/2` 时把 `nGroups` 限到 `nTiles/2`，让每个连续 N worker 平均至少两个 tile。未改设备代码、Matmul tiling、同步、归约和 launch 次数。候选 SHA-256 `229995e9de8e097606b74c39d4aac9079e27b7f7447259846b402b9274899e94`。
+- 本地参考测试 10 shapes × 4 layouts 通过；远端上传源码 diff 为 0。提交 `394474`，object ID `6ab12f120304f72a56d4b612`。
+- 结果是 15/15 全部 Wrong Answer，所有 precision=0、time=0；页面/API 均未给出编译/设备日志。此模式无法用于性能比较。源码与通过版本的实际差异只有上述 Host 条件与注释；设备代码相同。因此可能是新 group 分配引起某个隐藏 shape 的运行期资源/同步失败，也可能是构建/评测环境故障，不能仅凭全 0 确定根因；尤其不能把它解释成普通数值误差或 N-group 性能退化。没有外部故障证据，不重复同一 hash。
+- 已完整回退到 `384543`，SHA-256 与远端通过版相同，本地参考检查再次通过。此实验无法验证“双 tile 更快”假设，计划 02 暂不保留。今日提交计数为 7/50。
