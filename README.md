@@ -1,7 +1,7 @@
 # BatchMatmulMaxSum 协作说明
 
 `kernel.asc` 是当前可靠的提交源码：对应线上提交 `384543`，15/15 Pass，SHA-256 为
-`da2f4f2be9c95c06e98c406f19674f0276cf7f4ac69372d1192c8f44a1ed312b`。
+`da2f4f2be9c95c06e98c406f19674f0276cf7f4ac69372d1192c8f44a1ed312b`（按 LF 规范化换行计算）。
 它在一个 global kernel 内完成 FP16/BF16 输入的 FP32 点积、沿 N 的 Max 和沿 M 的 Sum，
 支持四种 storage shape，不使用非确定性原子归约。当前得分约 20.46；30 分是阶段目标。
 
@@ -15,6 +15,8 @@
 Windows 当前环境没有 NPU/CANN 编译器，因此实际编译、正确率和性能结论均以 CANNJudge 为准。
 线上模板只应替换 `kernel.asc`。一次改动只试一个机制，提交后将 ID、15 项结果、结论写入 `memory.md`；
 不把 15 项全 0 当成普通性能退化，也不在 Wrong Answer 上叠加优化。
+`.gitattributes` 固定 `kernel.asc` 使用 LF；若已有 Windows 工作副本仍为 CRLF，先规范化换行再比较 SHA，
+不能仅凭原始文件哈希认定代码不同。
 
 登录态 `.tmp_cannjudge_state.json`、浏览器缓存、下载的官方样例和临时探针故意不入库。
 每位队友自行登录 CANNJudge；不要提交 cookie、访问令牌或含敏感信息的运行日志。
