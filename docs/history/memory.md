@@ -2,6 +2,8 @@
 
 更新时间：2026-09-21
 
+本文件是按时间累积的实验记录。前文中的“当前”“今日”只表示该段写入时的状态；最新可交付源码以[仓库首页](../../README.md)和根目录 `kernel.asc` 为准。
+
 目标：15 个测试点全部正确，单次迭代严格只启动 1 个 kernel，最终平均分至少 30。
 
 ## 1. 当前可靠基线
@@ -278,7 +280,7 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 
 ### 8.1 零提交审计
 
-- 开始执行 `plan.md` 时，本地 `kernel.asc` SHA-256 仍为可靠基线 `0d26f7b3e0582888db430d0a2a07b1f691fa0d6b60844932ac8dd250ed6f1922`。
+- 开始执行 [`plan.md`](../research/plan.md) 时，本地 `kernel.asc` SHA-256 仍为可靠基线 `0d26f7b3e0582888db430d0a2a07b1f691fa0d6b60844932ac8dd250ed6f1922`。
 - `python tests/reference_test.py` 继续通过 `10 shapes × 4 storage layouts`。
 - 远端审计确认 `379068` 是同一 hash 的 15/15 Pass，不需要为“确认基线”再消耗一次提交。
 - 历史 probe 的倍率不能直接按 `2x/3x/4x/5x` 判定 shape 桶，因为 kernel 启动、Matmul 注册和同步等固定开销不会随 `probeRepeats` 成比例增长。以前仅凭总耗时倍率得出的部分 M/N 桶结论置信度过高；以后必须使用同源代码的 control，并用 `t(r)=fixed+r×work` 模型或正交 probe 联合判断。
@@ -335,7 +337,7 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 
 ### 8.5 plan 尝试 01：调度代价模型暂缓
 
-- 按 `plan.md` 的准入条件，必须先列出目标 case 的当前路由，并解释至少两个低分 case 的资源浪费。
+- 按 [`plan.md`](../research/plan.md) 的准入条件，必须先列出目标 case 的当前路由，并解释至少两个低分 case 的资源浪费。
 - 已有可靠 M/N 桶 probe 只覆盖未提前进入并行路径的 case；case 7–11 在旧版本中被 `ProcessNParallel/ProcessParallel` 提前 return，probe 循环没有执行。因此不能用这些耗时反推它们的 shape 或当前 `mTiles/nTiles/nGroups`。
 - 历史单变量仅能证明“把特定大 BF16 跨 layout 输入统一强制 `nGroups=1`”会让 case 11 从约 `225 us` 退化到 `331 us`，不足以拟合 Batch/M/N 三路完整代价模型。
 - 结论：尝试 01 暂缓，不提交猜测性阈值；同样依赖该模型的尝试 02 暂缓。额度保留给已有直接测量依据的独立分支。
@@ -391,7 +393,7 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 
 - 384622 提交前，系统剪贴板粘贴三次未通过编辑器回读守门；三次均在点击“提交代码”前终止，没有创建 submission、没有消耗评测次数。
 - 原因是提交页文件选择存在两个 `kernel.asc` 控件，且 Windows 系统剪贴板在该会话中返回空内容。
-- `.mcp_tools/paste_and_submit.js` 现会明确选择第一个 `kernel.asc` 控件，使用页面内 `ClipboardEvent` 注入源码，并拦截“复制当前文件”回调逐字回读。只有规范化内容完全一致才点击提交。
+- [`tools/paste_and_submit.js`](../../tools/paste_and_submit.js) 现会明确选择第一个 `kernel.asc` 控件，使用页面内 `ClipboardEvent` 注入源码，并拦截“复制当前文件”回调逐字回读。只有规范化内容完全一致才点击提交。
 
 ### 8.10 尝试 17/18 的零提交准入审计（暂缓）
 
@@ -417,7 +419,7 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 
 - 旧独立浏览器脚本的保存登录态已失效，但 Playwright CLI 的已打开会话仍处于 `2040lin` 登录状态；已直接核对线上题面、本人 `384543` 详情及排行榜。详情只含 15 个 case 的耗时、精度与 `best_time`，不含 `M/N/K`、实际 tiling、芯片型号、UB 容量或 Cube/Vector/MTE profiler 时间；排行榜测试点元数据也仅有 ID、baseline、tbest、type。公开题面和本地模板未提供这些隐藏配置，不能把缺失数据编造成“已测量”。
 - 本地 `CMakeLists.txt` 指定 `--npu-arch=dav-2201`。[华为毕昇编译器文档](https://www.hiascend.com/document/detail/zh/canncommercial/900/compiler/BishengCompiler/atlas_bisheng_10_0017.html) 说明 Atlas A2 与 A3 均对应 `2201`；因此编译目标不能唯一确定评测机器，也不能据它宣称实际 UB 为 192 KiB。此前 8.12 的 192 KiB 仅为官方 A2/A3 最佳实践的参考上限，不是在线环境实测值。
-- 更重要的是，线上题面与 `problem_official.md` 一致，比赛得分规则为 `100 / (1 + log_1.5(t/T))`，而旧计划与若干旧实验用 `100×T/t` 线性估分。已据 `384543` 详情里的 `best_time` 重算：`379068=20.124`、`384408=20.295`、`384543=20.471`、`384622=20.606`。线上排行榜显示本人当前为第 67 名、`384622` 实际得分 `20.61`，验证了重算公式；但该版唯一明确命中的 case 2 确定退化，未命中 case 的有利波动不能归因于 AIV，故本地代码仍保持 `384543`。旧线性估分的单 case 收益和以它设计的固定 `+0.35/+0.25` 准入线均作废；以耗时改善、命中证据、官方公式以及自然复验共同判断。
+- 更重要的是，线上题面与 [`problem_official.md`](../spec/problem_official.md) 一致，比赛得分规则为 `100 / (1 + log_1.5(t/T))`，而旧计划与若干旧实验用 `100×T/t` 线性估分。已据 `384543` 详情里的 `best_time` 重算：`379068=20.124`、`384408=20.295`、`384543=20.471`、`384622=20.606`。线上排行榜显示本人当前为第 67 名、`384622` 实际得分 `20.61`，验证了重算公式；但该版唯一明确命中的 case 2 确定退化，未命中 case 的有利波动不能归因于 AIV，故本地代码仍保持 `384543`。旧线性估分的单 case 收益和以它设计的固定 `+0.35/+0.25` 准入线均作废；以耗时改善、命中证据、官方公式以及自然复验共同判断。
 - 在无 NPU、无 msprof、线上详情不含 tiling 的情况下，真正的目标 case 资源瓶颈不能零提交实测。下一次需要评测时应设计一个合规、单提交、能区分多种瓶颈假设的受控实验；在此之前仍不提交“猜目标 case shape”的优化版。
 - 已打开本人 `384543` 提交工程的 `run.sh` 与 `scripts/BatchMatmulMaxSum.py`：前者只做 CANN 编译、样例运行与校验，没有设备/tiling/profiler 输出；后者的 `cases` 仅有公开基础样例 `(B=1,M=2,N=3,K=4)`，不是排行榜 15 个隐藏测试点。不能从这些公开样例反推隐藏 case。
 - 登录会话的本人提交列表显示上海时间 2026-09-21 目前有 4 次提交：`384363/384408/384543/384622`，均已完成且 Pass；本轮只读审计新增提交 `0` 次。按用户所述每日 50 次额度，当前至少应保留约 46 次，不为缺乏证据的实验占用它们。
@@ -464,5 +466,5 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 
 ### 8.20 Git 协作交付
 
-- 仓库已存在，`origin` 为 `https://github.com/lin-z-h/cann-competition.git`。同步远端时发现队友新增 `cann_api_reference.md` 和 `new_design.md`，与本地源码无冲突；不覆盖远端文档。
-- 共享可靠源码、测试、规则、计划、实验记录、历史结果及无凭据的 `.mcp_tools/` 工具。`.tmp_cannjudge_state.json` 含 GitCode/CANNJudge 登录令牌，必须继续忽略；`.playwright*`、`.tmp_*`、官方样例下载和无效旧候选不入库。
+- 仓库已存在，`origin` 为 `https://github.com/lin-z-h/cann-competition.git`。同步远端时发现队友新增 [`cann_api_reference.md`](../research/cann_api_reference.md) 和 [`new_design.md`](../research/new_design.md)，与本地源码无冲突；不覆盖远端文档。
+- 共享可靠源码、测试、规则、计划、实验记录、历史结果及无凭据的 [`tools/`](../../tools/README.md) 工具。`.tmp_cannjudge_state.json` 含 GitCode/CANNJudge 登录令牌，必须继续忽略；`.playwright*`、`.tmp_*`、官方样例下载和无效旧候选不入库。

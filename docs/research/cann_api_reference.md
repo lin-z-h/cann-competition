@@ -23,7 +23,7 @@
 
 ### 2.1 run_kernel
 
-当前入口位于 kernel.asc 第 1047 行：
+当前入口见根目录 [`kernel.asc`](../../kernel.asc) 中的 `run_kernel` 定义：
 
 ~~~cpp
 extern "C" void run_kernel(
@@ -85,25 +85,31 @@ size_t systemWorkspaceBytes =
 
 ### 3.2 MatmulApiTiling 配置顺序
 
-当前工程在 kernel.asc 第 930 行使用：
+当前工程在根目录 [`kernel.asc`](../../kernel.asc) 的 `BuildTiling` 中使用：
 
 ~~~cpp
 matmul_tiling::MatmulApiTiling tilingApi(*platform);
 
-tilingApi.SetAType(TPosition::GM, aFormat, inputType, transposeX1);
-tilingApi.SetBType(TPosition::GM, CubeFormat::ND, inputType, transposeX2);
-tilingApi.SetCType(TPosition::VECIN, CubeFormat::ND,
-                   DataType::DT_FLOAT);
-tilingApi.SetBiasType(TPosition::GM, CubeFormat::ND,
-                      DataType::DT_FLOAT);
+tilingApi.SetAType(matmul_tiling::TPosition::GM, aFormat,
+                   inputType, transposeX1);
+tilingApi.SetBType(matmul_tiling::TPosition::GM,
+                   matmul_tiling::CubeFormat::ND, inputType, transposeX2);
+tilingApi.SetCType(matmul_tiling::TPosition::VECIN,
+                   matmul_tiling::CubeFormat::ND,
+                   matmul_tiling::DataType::DT_FLOAT);
+tilingApi.SetBiasType(matmul_tiling::TPosition::GM,
+                      matmul_tiling::CubeFormat::ND,
+                      matmul_tiling::DataType::DT_FLOAT);
 
-tilingApi.SetShape(M, N, K);
-tilingApi.SetOrgShape(M, N, K);
-tilingApi.SetFixSplit(baseM, baseN, -1);
+tilingApi.SetShape(tilingM, n, k);
+tilingApi.SetOrgShape(m, n, k);
+if (!useRowGemv) tilingApi.SetFixSplit(baseM, baseN, -1);
 tilingApi.SetBufferSpace(-1, -1, -1);
 tilingApi.EnableBias(false);
 tilingApi.GetTiling(tiling);
 ~~~
+
+以上是调用顺序示意。实际实现会检查各调用的返回值、在 row GEMV 路径跳过固定 split，并以 `GetBaseM/GetBaseN` 的最终值确定设备侧 stride 和缓冲区大小。
 
 | 接口 | 说明 |
 |---|---|
@@ -420,4 +426,3 @@ void batch_matmul_max_sum_kernel(...);
 - [ ] 尾块搬运满足 32B 对齐规则。
 - [ ] Kernel 未完成前不释放 workspace。
 - [ ] 不提交标准算子注册代码、main() 或额外工程文件。
-

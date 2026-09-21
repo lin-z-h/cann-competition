@@ -5,7 +5,7 @@ async (page) => {
   const results = [];
 
   for (const mode of modes) {
-    const file = `D:/cann_competition/.tmp_probes/kernel.p${mode}.asc`;
+    const file = require('path').resolve(process.cwd(), `.tmp_probes/kernel.p${mode}.asc`);
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.goto(SUBMIT_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector(EDITOR, { timeout: 40000 });

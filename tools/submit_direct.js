@@ -19,7 +19,7 @@ async (page) => {
   await page.waitForSelector(EDITOR, { timeout: 40000 });
   await page.waitForTimeout(2000);
   await page.route('**/__local_kernel.asc', route => route.fulfill({
-    path: 'D:/cann_competition/kernel.asc',
+    path: require('path').resolve(process.cwd(), 'kernel.asc'),
     contentType: 'text/plain; charset=utf-8',
   }));
   const code = await page.evaluate(() =>

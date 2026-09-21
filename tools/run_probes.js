@@ -1,6 +1,7 @@
 async (page) => {
   const EDITOR = '.monaco-editor textarea.inputarea';
   const URL = 'https://cannjudge.cn/public/op_challenge_shanghe_prelim/batchmatmulmaxsum/submit';
+  const modes = [6, 16];
   const out = [];
 
   const latest = () => page.evaluate(async () => {
@@ -49,6 +50,8 @@ async (page) => {
     return false;
   };
 
+  // Click submit, absorbing the submission-rate cooldown until a new
+  // submission id actually appears.
   const doSubmit = async () => {
     const before = (await latest()).ID;
     for (let t = 0; t < 12; t++) {
@@ -77,19 +80,14 @@ async (page) => {
     return false;
   };
 
-  await page.route('**/__exp_list.txt', route => route.fulfill({
-    path: 'D:/cann_competition/.tmp_exp/list.txt',
-    contentType: 'text/plain; charset=utf-8'
-  }));
-  const list = (await page.evaluate(() =>
-    fetch('/__exp_list.txt', { cache: 'no-store' }).then(r => r.text())))
-    .split('\n').map(s => s.trim()).filter(Boolean);
-
-  for (const file of list) {
+  for (const mode of modes) {
     let done = null;
     for (let attempt = 0; attempt < 3 && !done; attempt++) {
-      if (!await loadInto(file)) { out.push({ file, error: 'editor mismatch' }); break; }
-      if (!await doSubmit()) { out.push({ file, error: 'submit failed' }); break; }
+      if (!await loadInto(require('path').resolve(process.cwd(), `.tmp_probes/kernel.p${mode}.asc`))) {
+        out.push({ mode, error: 'editor mismatch' });
+        break;
+      }
+      if (!await doSubmit()) { out.push({ mode, error: 'submit failed' }); break; }
       let r = null;
       for (let w = 0; w < 16; w++) {
         await page.waitForTimeout(30000);
@@ -99,7 +97,7 @@ async (page) => {
       if (r && r.cases === 15 && /[^0.]/.test(r.prec.replace(/[.,]/g, ''))) done = r;
       else await page.waitForTimeout(60000);
     }
-    out.push({ file: file.split('/').pop(), result: done });
+    out.push({ mode, result: done });
   }
   return out;
 }

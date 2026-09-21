@@ -10,7 +10,7 @@ async (page) => {
   // Which file to send is read from disk through a route handler, because the
   // sandboxed runner cannot touch the filesystem directly.
   await page.route('**/__next_probe.txt', route => route.fulfill({
-    path: 'D:/cann_competition/.tmp_probes/next.txt',
+    path: require('path').resolve(process.cwd(), '.tmp_probes/next.txt'),
     contentType: 'text/plain; charset=utf-8'
   }));
   const target = (await page.evaluate(() =>

@@ -10,7 +10,7 @@ async (page) => {
   // The page cannot reach 127.0.0.1 over its https origin, so the file is
   // injected through a route handler fulfilled by the Playwright process.
   await page.route('**/__local_kernel.asc', route => route.fulfill({
-    path: 'D:/cann_competition/kernel.asc',
+    path: require('path').resolve(process.cwd(), 'kernel.asc'),
     contentType: 'text/plain; charset=utf-8'
   }));
   const code = await page.evaluate(() =>

@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { chromium } = require(
-  'C:/Users/ASUS/AppData/Local/npm-cache/_npx/423231821c231c73/node_modules/playwright');
+const { chromium } = require('playwright');
 
 const root = path.resolve(__dirname, '..');
 const browserTemp = path.join(root, '.tmp_playwright_runtime');
@@ -79,9 +78,9 @@ async function submit(page) {
   const action = process.argv[2] || 'poll';
   const browser = await chromium.launch({
     headless: true,
-    executablePath:
-      'D:/Program/ms-playwright/chromium_headless_shell-1223/' +
-      'chrome-headless-shell-win64/chrome-headless-shell.exe',
+    ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+      : {}),
   });
   try {
     const context = await browser.newContext({ storageState: statePath });

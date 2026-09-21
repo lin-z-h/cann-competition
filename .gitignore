@@ -16,8 +16,8 @@ kernel.v4stride*.asc
 # Submission / result logs
 sub_*
 *.json
-!history_results.json
-!key_kernels.json
+!data/history_results.json
+!data/key_kernels.json
 
 # Build output
 build/
