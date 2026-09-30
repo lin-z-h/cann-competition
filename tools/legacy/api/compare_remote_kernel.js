@@ -76,7 +76,7 @@ function unifiedDiff(oldText, newText) {
   const first = await loadRemote(submissionId);
   const second = secondSubmissionId
     ? await loadRemote(secondSubmissionId)
-    : fs.readFileSync('kernel.asc', 'utf8');
+    : fs.readFileSync(process.env.CANN_KERNEL_PATH || 'kernel.asc', 'utf8');
   const diff = unifiedDiff(first, second);
   process.stdout.write(`changedLines=${diff.changedLines}\n${diff.output}\n`);
 })().catch(error => {

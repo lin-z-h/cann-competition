@@ -1,4 +1,5 @@
 async (page) => {
+  if (!process.env.CANN_KERNEL_PATH) throw new Error('Set CANN_KERNEL_PATH to the .asc file to submit');
   const EDITOR = '.monaco-editor textarea.inputarea';
   const URL = 'https://cannjudge.cn/public/op_challenge_shanghe_prelim/batchmatmulmaxsum/submit';
   const uid = '6aabe4f6b0477ec41ec44882';
@@ -19,7 +20,7 @@ async (page) => {
   await page.waitForSelector(EDITOR, { timeout: 40000 });
   await page.waitForTimeout(2000);
   await page.route('**/__local_kernel.asc', route => route.fulfill({
-    path: require('path').resolve(process.cwd(), 'kernel.asc'),
+    path: require('path').resolve(process.cwd(), process.env.CANN_KERNEL_PATH),
     contentType: 'text/plain; charset=utf-8',
   }));
   const code = await page.evaluate(() =>

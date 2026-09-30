@@ -1,10 +1,10 @@
 # BatchMatmulMaxSum 优化记忆与实验方法
 
-更新时间：2026-09-21
+更新时间：2026-09-22
 
 本文件是按时间累积的实验记录。前文中的“当前”“今日”只表示该段写入时的状态；最新可交付源码以[仓库首页](../../README.md)和根目录 `kernel.asc` 为准。
 
-目标：15 个测试点全部正确，单次迭代严格只启动 1 个 kernel，最终平均分至少 30。
+历史优化目标：15 个测试点全部正确，单次迭代严格只启动 1 个 kernel，并争取平均分至少 30。后续[新设计](../research/new_design.md)未继承固定分数门槛；此处不作为当前发布条件。
 
 ## 1. 当前可靠基线
 
@@ -393,7 +393,7 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 
 - 384622 提交前，系统剪贴板粘贴三次未通过编辑器回读守门；三次均在点击“提交代码”前终止，没有创建 submission、没有消耗评测次数。
 - 原因是提交页文件选择存在两个 `kernel.asc` 控件，且 Windows 系统剪贴板在该会话中返回空内容。
-- [`tools/paste_and_submit.js`](../../tools/paste_and_submit.js) 现会明确选择第一个 `kernel.asc` 控件，使用页面内 `ClipboardEvent` 注入源码，并拦截“复制当前文件”回调逐字回读。只有规范化内容完全一致才点击提交。
+- [`tools/paste_and_submit.js`](../../tools/legacy/browser/paste_and_submit.js) 现会明确选择第一个 `kernel.asc` 控件，使用页面内 `ClipboardEvent` 注入源码，并拦截“复制当前文件”回调逐字回读。只有规范化内容完全一致才点击提交。
 
 ### 8.10 尝试 17/18 的零提交准入审计（暂缓）
 
@@ -468,3 +468,50 @@ M-parallel owner 原先逐项 `GetValue` 从 GM 读取 partial 并做标量累�
 
 - 仓库已存在，`origin` 为 `https://github.com/lin-z-h/cann-competition.git`。同步远端时发现队友新增 [`cann_api_reference.md`](../research/cann_api_reference.md) 和 [`new_design.md`](../research/new_design.md)，与本地源码无冲突；不覆盖远端文档。
 - 共享可靠源码、测试、规则、计划、实验记录、历史结果及无凭据的 [`tools/`](../../tools/README.md) 工具。`.tmp_cannjudge_state.json` 含 GitCode/CANNJudge 登录令牌，必须继续忽略；`.playwright*`、`.tmp_*`、官方样例下载和无效旧候选不入库。
+
+### 8.21 新设计独立实验版与提交工具整理（未线上提交）
+
+- 根据 [`new_design.md`](../research/new_design.md) 建立 [`experiments/new_design/kernel.asc`](../../experiments/new_design/kernel.asc)。主干包含 batch 独占、M 条带、M×N 连续分区和有界 MatMul 调用段长；根目录可靠源码未替换，其 SHA-256 仍是 `da2f4f2be9c95c06e98c406f19674f0276cf7f4ac69372d1192c8f44a1ed312b`。
+- [`tests/new_design_test.py`](../../tests/new_design_test.py) 的 CPU 数学与调度模型 43 项通过；这不是设备编译、同步或线上精度证明。实验版尚未提交 CANNJudge，Split-K 与输出方向交换仍未实现。
+- [`tools/`](../../tools/README.md) 的两个直接提交入口改为必须用 `--file` 选定 `.asc` 文件，可用 `--state` 指定本地登录状态；历史浏览器/API 脚本归档到 `tools/legacy/`。登录状态仍未入库。本次工具整理没有新增线上提交。
+
+### 8.22 新设计首次线上提交与提交链路核对
+
+- 2026-09-22 提交 `403810`（object ID `6ab214790304f72a563ba96e`），线上 `kernel.asc` 为 41,742 字节，按 LF 换行的 SHA-256 `00ff03e6334f522ce978a376a13d7fe57b5752bfffa0b6469f22d0ecbe761679`，与当时的 [`experiments/new_design/kernel.asc`](../../experiments/new_design/kernel.asc) 本地文件完全一致。题目 ID 与当前登录账号 ID 也核对一致；提交脚本确实上传了指定实验文件。
+- 15/15 均为 Wrong Answer，所有 `time=0、precision_ratio=0`。详情 API 没有编译或设备错误日志；这组结果不能单凭状态判定为普通数值误差，也不能确认具体是编译、启动、资源、同步或平台问题。当前 Windows 环境仍没有 CANN 编译器或 NPU，未做设备编译复现。
+- 独立 CPU 数学与调度模型重跑 43/43 通过；该模型不执行 Ascend C 源码，不能为线上失败路径提供设备级覆盖。提交工具的本地路径选择测试 4/4 通过。`submit_api.js` 的提交结果已增加远端源码哈希和字节数回读断言；原先只输出本地哈希的守门缺口不是本次 WA 原因。没有再次提交，也未改根目录可靠 `kernel.asc`。
+
+### 8.23 可靠版本同脚本复验
+
+- 按用户要求，用 `node tools/submit_api.js submit --file kernel.asc --state .tmp_cannjudge_state.json` 提交根目录可靠版。提交 `404383`（object ID `6ab21e4f0304f72a56411a41`），远端源码 49,921 字节，SHA-256 `da2f4f2be9c95c06e98c406f19674f0276cf7f4ac69372d1192c8f44a1ed312b`，与本地及历史 `384543` 完全一致。
+- 最终 15/15 Pass，所有 `precision_ratio=1`。0-based case 耗时：`11.62, 21.55, 27.60, 15.20, 12.54, 99.29, 17.38, 100.96, 137.43, 148.86, 230.72, 181.34, 31.84, 28.80, 37.16 us`。这证明当前提交入口和评测环境至少能够使可靠版完整通过；`403810` 实验版的全 WA 不能归因于选错文件或普遍的平台不可用，但仍没有实验版的编译/设备日志，不能进一步断言具体源码故障。
+
+### 8.24 新设计三次修复提交（按用户上限停止）
+
+- 第 1 次 `404515`（object ID `6ab220640304f72a56425d64`，SHA-256 `1d22eb4d0e7696d2bfc41fc36d8d39a12a604146a2fd39a2564a93500b59c818`）：相对 `403810` 只恢复可靠版方式的非零 partial/sync/async workspace、相关 UB buffer 初始化以及无条件 `SetWorkspace`，保留 A/B/C 调度和 MatMul 分段。结果从 15 项全 0 变成 **14/15 Pass**；唯 0-based case 5 为 Wrong Answer，`precision_ratio=0.07692307692307687`、`time=169.5 us`。其余 14 项精度比率均为 1。由于这些工作区改动一起提交，不能进一步断定最初全 0 的唯一语句。
+- 第 2 次 `404559`（object ID `6ab221220304f72a5642c643`，SHA-256 `0b929f653aeb719b712a6fd8f438abf494cea8e0b48782e66ca7240d64b146ca`）：针对非 N 分区的 M/N 双尾矩阵段，把同步 `GetTensorC` 的输出方式恢复为可靠版的非 sequential。结果仍为 **14/15 Pass**，同一 case 5 精度比率不变。首次请求遇到 HTTP 429 冷却，未创建提交；等待后才创建此 ID。
+- 第 3 次 `404608`（object ID `6ab221de0304f72a56433e46`，SHA-256 `f996977ab28904f64822dd9f590d936031aa81e2120cfe0294e0f5e15aa85cf2`）：让模式 A 使用从根目录可靠版原样复制、仅重命名的 M/N 消费函数，模式 B/C 仍走新设计。结果仍为 **14/15 Pass**，同一 case 5 精度比率不变。模式 A 回退未改变结果，提示需优先检查该点实际模式、tiler 返回的 baseM/baseN、任务分区与部分结果合并；目前线上不公开这些参数，不能把模式 B/C 判定为确定根因。
+- 用户授权的三次新提交均已用完，停止线上提交。当前 [`experiments/new_design/kernel.asc`](../../experiments/new_design/kernel.asc) 已恢复到较小的 `404515` 候选，SHA-256 `1d22eb4d0e7696d2bfc41fc36d8d39a12a604146a2fd39a2564a93500b59c818`；CPU 调度模型仍为 43/43 通过。根目录可靠版未改动，不将实验版标为通过版本。
+
+### 8.25 用户追加授权后的路由定位与通过版
+
+- 本轮最多授权五次新提交，实际使用三次。`404890`（object ID `6ab226a30304f72a5646016b`，SHA-256 `5832896c6200f048409087cabd7d4ab875825b7e38dc912a57852a897bd69278`）在 `404608` 基础上强制所有形状走模式 A，结果 15 项全 0 Wrong Answer；该实验范围过大，不能用于判断 case 5 原模式。恢复原调度后，仅对 `M<=32、N<=128` 这一小形状范围选择模式 A，保留可靠版 M/N 消费路径。
+- 该受控候选提交 `404933`（object ID `6ab227600304f72a564673ee`，SHA-256 `ed34038968b0fca3ca1b8e7e8d18ca0158a89239ea54d53520bb34c2bb875ad6`）**15/15 Pass**，全部 `precision_ratio=1`。0-based case 耗时：`11.63, 21.32, 26.86, 15.38, 12.17, 97.15, 17.12, 137.91, 95.41, 181.30, 197.85, 337.83, 35.15, 28.59, 36.58 us`。case 5 恢复到 `97.15 us`，接近根目录可靠版 `404383` 的 `99.29 us`；但 case 11 为 `337.83 us`，明显慢于可靠版 `181.34 us`，因此不能据通过结果声称总体性能更好。
+- 为区分路由与消费实现，`404973`（object ID `6ab2281d0304f72a5646e1b3`，SHA-256 `f1158f7489a02debd1f102edbd82ca54da907c4f0ee007b21c890a67e6765020`）保留同一小形状路由，但删除复制的可靠版消费路径，改回实验版共用消费者。结果又是 15 项全 0、无设备用时。故当前证据支持**小形状模式 A 与可靠版消费者需要共同保留**；尚无法从全 0 状态确定消费者中的唯一错误语句，也不能从隐藏用例推断确切 shape/tiling。
+- 当前 [`experiments/new_design/kernel.asc`](../../experiments/new_design/kernel.asc) 已恢复 `404933` 的源码；提交脚本将 CRLF 规范化为 LF 后，SHA-256 与线上 `ed34038968b0fca3ca1b8e7e8d18ca0158a89239ea54d53520bb34c2bb875ad6` 一致。本地 CPU 模型 51/51 通过，但不替代设备验证。根目录可靠版哈希仍为 `da2f4f2be9c95c06e98c406f19674f0276cf7f4ac69372d1192c8f44a1ed312b`。HTTP 429 冷却请求未创建提交，不计入三次。既已取得全通过版本，本轮不继续使用剩余两次机会。
+
+### 8.26 相同源码复验
+
+- 按用户要求，再次提交 `404933` 的相同源码。新提交 `405079`（object ID `6ab229be0304f72a5647e5ae`），远端 `kernel.asc` 为 53,422 字节，规范化 LF 后 SHA-256 仍为 `ed34038968b0fca3ca1b8e7e8d18ca0158a89239ea54d53520bb34c2bb875ad6`。
+- 评测再次 **15/15 Pass**，全部 `precision_ratio=1`。0-based case 耗时：`11.88, 21.72, 26.97, 15.54, 12.54, 97.25, 16.93, 135.62, 95.46, 182.15, 195.83, 335.41, 36.43, 29.79, 36.50 us`。这是前述五次额度中的第 4 次，尚余 1 次；源码未改动。
+
+### 8.27 CANNLab 设备最小冒烟验证
+
+- 2026-09-30，用户在远端 CANNLab SSH 工作区执行 `bash scripts/cannlab_smoke.sh`。可靠版与 `experiments/new_design/kernel.asc` 均完成 ASC 编译、ACL 运行；FP16 `B=1,M=1,N=1,K=32`、`transposeX1=false, transposeX2=false` 输出 `-0.25`，CPU 参考 `-0.25`，绝对误差 `0`，阈值 `0.000125`。用户报告脚本最终显示 reliable 与 new_design 冒烟均通过。
+- 本结果证实两个版本在该远端环境下的最小编译、launch 与 FP16 精度路径可运行；不覆盖 BF16、其它三种布局、尾块、大 M/N 分区路径、完整线上 15 个用例或 `msprof`。环境通过 `npu-smi` 显示设备可见；具体设备型号未由本条运行日志确认。后续扩大设备用例时另行记录。
+
+### 8.28 CANNLab 扩展用例首次报告：大矩阵精度失败
+
+- 用户报告扩展版 `scripts/cannlab_smoke.sh` 在远端成功完成可靠版编译，并通过 smoke、四种布局的小矩阵及尾块用例；首次失败为 `reliable/mode_c_f16_t00`（`B=1,M=256,N=257,K=64`、FP16、无转置）：实际 `37.6914062`，CPU 参考 `19.109375`，误差 `18.6`，阈值 `0.00201`。这是精度断言失败，不是编译失败；旧脚本 fail-fast，故这轮 `new_design` 尚无运行结果。
+- 该数据模式的输入按可精确表示的值生成，CPU 参考按每行 `max_N(sum_K(X1*X2))` 再对 M 求和；当前证据尚不能确定差异来自内核分组归并、N 尾块、MatMul 输出布局或其它设备路径，也没有依据把差异归因于参考值生成。
+- 随后的远端更新脚本新增 `M=128,N=257`（单 M tile）、`M=256,N=256`（去除 N 尾块）两个隔离用例，并把新设计候选调到可靠版之前。脚本按项目约定在首个配置、编译、运行或精度错误处停止并标明阶段；先运行候选可避免已知的可靠版错误使候选完全没有结果。需用户在 CANNLab 重新执行后，才能依据两种实现结果继续定位；本地无 CANN/NPU，未进行设备复现。

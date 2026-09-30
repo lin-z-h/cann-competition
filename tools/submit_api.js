@@ -1,20 +1,12 @@
 const crypto = require('crypto');
-const fs = require('fs');
+const {
+  parseArgs, selectedSource, cookieFromState, userIdFromState,
+} = require('./lib/cli');
 
 const BASE_URL = 'https://cannjudge.cn';
-const USER_ID = '6aabe4f6b0477ec41ec44882';
-const PROBLEM_ID = '6a9aa054bf41025d6014f3ef';
-const action = process.argv[2] || 'check';
-
-function loadCookie() {
-  const state = JSON.parse(fs.readFileSync('.tmp_cannjudge_state.json', 'utf8'));
-  return state.cookies
-    .filter(item => item.domain === 'cannjudge.cn' || item.domain === '.cannjudge.cn')
-    .map(item => `${item.name}=${item.value}`)
-    .join('; ');
-}
-
-const cookie = loadCookie();
+const options = parseArgs(process.argv.slice(2), 'check', ['check', 'preview', 'submit']);
+let cookie;
+let userId;
 
 async function request(path, options = {}) {
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -41,8 +33,10 @@ async function request(path, options = {}) {
 }
 
 async function getLatest() {
-  const list = await request(`/api/submissions/user/${USER_ID}/problem/${PROBLEM_ID}`);
-  if (!Array.isArray(list) || !list.length) throw new Error('No submissions found');
+  const list = await request(
+    `/api/submissions/user/${userId}/problem/${options.problemId}`);
+  if (!Array.isArray(list)) throw new Error('提交列表格式无效');
+  if (!list.length) return null;
   const summary = list[0];
   const detail = await request(`/api/submissions/${summary._id}`);
   return { summary, detail };
@@ -88,31 +82,43 @@ function compact(latest) {
 }
 
 async function main() {
-  const before = await getLatest();
-  if (action === 'check') {
-    process.stdout.write(`${JSON.stringify(compact(before), null, 2)}\n`);
+  if (options.help) {
+    process.stdout.write('用法：node tools/submit_api.js check [--state 文件] [--user-id ID] [--problem-id ID]\n' +
+      '       node tools/submit_api.js preview --file 源码.asc\n' +
+      '       node tools/submit_api.js submit --file 源码.asc [--state 文件] [--user-id ID] [--problem-id ID]\n' +
+      '路径可为绝对路径，或相对仓库根目录；提交时必须指定 --file。\n');
     return;
   }
-  if (action !== 'submit') throw new Error(`Unknown action: ${action}`);
+  const source = ['submit', 'preview'].includes(options.action) ?
+    selectedSource(options.file) : null;
+  if (options.action === 'preview') {
+    process.stdout.write(`${JSON.stringify({ sourcePath: source.path,
+      kernelBytes: source.bytes, kernelSha256: source.sha256 }, null, 2)}\n`);
+    return;
+  }
+  cookie = cookieFromState(options.state);
+  userId = options.userId === 'auto' ? userIdFromState(options.state) : options.userId;
+  const before = await getLatest();
+  if (options.action === 'check') {
+    process.stdout.write(`${JSON.stringify(before ? compact(before) :
+      { status: '暂无提交', userId, problemId: options.problemId }, null, 2)}\n`);
+    return;
+  }
 
-  const beforeStatus = String(before.detail.status || before.summary.status || '').toLowerCase();
+  const beforeStatus = String(before?.detail.status || before?.summary.status || '').toLowerCase();
   if (beforeStatus === 'running' || beforeStatus === 'pending') {
     throw new Error(`Latest submission ${before.summary.ID} is still ${beforeStatus}`);
   }
 
-  const localKernel = fs.readFileSync('kernel.asc', 'utf8').replace(/\r\n/g, '\n');
-  const files = parseFiles(before.detail);
-  const kernel = files.find(file => file.path === 'kernel.asc');
-  if (!kernel) throw new Error('kernel.asc missing from latest submission template');
-  kernel.content = localKernel;
+  const localKernel = source.content;
 
   // The submit API accepts only user-editable root .asc/.h files here. The
   // immutable problem template is injected by the judge and must not be sent.
-  const editableFiles = [{ path: 'kernel.asc', content: kernel.content }];
+  const editableFiles = [{ path: 'kernel.asc', content: localKernel }];
 
   const payload = {
-    problemId: PROBLEM_ID,
-    userId: USER_ID,
+    problemId: options.problemId,
+    userId,
     files: editableFiles,
     tiling_h: '',
     tiling_key_h: '',
@@ -125,17 +131,22 @@ async function main() {
     body: JSON.stringify(payload),
   });
   const after = await getLatest();
-  if (String(after.summary.ID) === String(before.summary.ID)) {
+  if (!after || String(after.summary.ID) === String(before?.summary.ID)) {
     throw new Error(`Submit response did not create a new submission: ${JSON.stringify(response)}`);
   }
-  const hash = crypto.createHash('sha256').update(localKernel).digest('hex');
+  const submitted = compact(after);
+  if (submitted.kernelSha256 !== source.sha256 ||
+      submitted.kernelBytes !== source.bytes) {
+    throw new Error(`远端 kernel.asc 与所选源码不一致：本地 ${source.sha256}，远端 ${submitted.kernelSha256}`);
+  }
   process.stdout.write(`${JSON.stringify({
-    before: before.summary.ID,
+    before: before?.summary.ID ?? null,
     after: after.summary.ID,
     id: after.summary._id,
     status: after.detail.status || after.summary.status,
-    kernelBytes: Buffer.byteLength(localKernel),
-    kernelSha256: hash,
+    sourcePath: source.path,
+    kernelBytes: source.bytes,
+    kernelSha256: submitted.kernelSha256,
   }, null, 2)}\n`);
 }
 

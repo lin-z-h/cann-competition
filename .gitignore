@@ -21,3 +21,9 @@ sub_*
 
 # Build output
 build/
+input/
+output/
+node_modules/
+__pycache__/
+.pytest_cache/
+pytest-cache-files-*/

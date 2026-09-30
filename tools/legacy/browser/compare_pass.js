@@ -1,6 +1,6 @@
 async (page) => {
   await page.route('**/__current_kernel.asc', route => route.fulfill({
-    path: require('path').resolve(process.cwd(), 'kernel.asc'),
+    path: require('path').resolve(process.cwd(), process.env.CANN_KERNEL_PATH || 'kernel.asc'),
     contentType: 'text/plain; charset=utf-8',
   }));
   const current = await page.evaluate(() =>

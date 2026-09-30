@@ -4,6 +4,8 @@
 
 > 适用环境：CANN 9.0.0 及以上、Ascend C、NPU kernel 工程模板。
 
+阅读状态（2026-09-22）：下文示例主要对应仓库根目录已记录通过的 `kernel.asc`。新设计的[独立实验版](../../experiments/new_design/README.md)沿用部分接口，但新增的分段同步/异步 C 消费及工作区规划尚未经 NPU 编译和设备契约验证；不要把本文示例视为实验版的验证结果。
+
 ## 1. 先区分两种工程接口
 
 本项目不是标准 op_host/op_kernel 自定义算子工程，而是比赛提供的 npu_kernel_dev 模板。
